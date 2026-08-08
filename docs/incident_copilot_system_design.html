@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incident & Ticket Enrichment Copilot — System Design</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f8fa;color:#1a1a2e;font-size:11px;padding:16px}
+  h1{text-align:center;font-size:18px;font-weight:700;letter-spacing:.5px;margin-bottom:2px;color:#1a1a2e}
+  .subtitle{text-align:center;font-size:11px;color:#555;margin-bottom:14px;letter-spacing:.3px}
+  .page{max-width:1100px;margin:0 auto}
+
+  /* LAYERS */
+  .layer{border-radius:10px;margin-bottom:10px;padding:10px 12px;border:1px solid}
+  .layer-title{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px;text-align:center}
+
+  /* Layer colour palette */
+  .l-gray  {background:#f1efe8;border-color:#b4b2a9}
+  .l-blue  {background:#e6f1fb;border-color:#85b7eb}
+  .l-purple{background:#eeedfe;border-color:#afa9ec}
+  .l-teal  {background:#e1f5ee;border-color:#5dcaa5}
+  .l-amber {background:#faeeda;border-color:#ef9f27}
+  .l-coral {background:#faece7;border-color:#f0997b}
+  .l-green {background:#eaf3de;border-color:#97c459}
+  .l-red   {background:#fcebeb;border-color:#f09595}
+
+  /* Box colour palette */
+  .b-gray  {background:#f1efe8;border:1px solid #888780;color:#444441}
+  .b-blue  {background:#e6f1fb;border:1px solid #378add;color:#0c447c}
+  .b-purple{background:#eeedfe;border:1px solid #7f77dd;color:#3c3489}
+  .b-teal  {background:#e1f5ee;border:1px solid #1d9e75;color:#085041}
+  .b-amber {background:#faeeda;border:1px solid #ba7517;color:#633806}
+  .b-coral {background:#faece7;border:1px solid #d85a30;color:#712b13}
+  .b-green {background:#eaf3de;border:1px solid #639922;color:#27500a}
+  .b-red   {background:#fcebeb;border:1px solid #e24b4a;color:#791f1f}
+
+  /* GRID helpers */
+  .row{display:flex;gap:8px;align-items:stretch}
+  .col{flex:1;display:flex;flex-direction:column;gap:6px}
+  .box{border-radius:6px;padding:7px 9px;font-size:10px;line-height:1.4}
+  .box-title{font-size:10px;font-weight:700;margin-bottom:3px}
+  .box ul{padding-left:12px;margin:0}
+  .box ul li{font-size:9.5px;line-height:1.5;color:inherit}
+  .center{text-align:center}
+
+  /* ARROW rows */
+  .arrow-row{text-align:center;font-size:13px;color:#555;margin:2px 0;line-height:1}
+
+  /* Orchestrator inner panels */
+  .orch-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}
+  .orch-box{border-radius:6px;padding:6px 8px;border:1px solid #afa9ec;background:#fff;color:#3c3489}
+  .orch-box .bt{font-size:9.5px;font-weight:700;margin-bottom:3px;color:#3c3489}
+  .orch-box ul{padding-left:11px;margin:0}
+  .orch-box ul li{font-size:9px;line-height:1.5;color:#534ab7}
+
+  /* Agents row */
+  .agents-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px}
+  .agent-box{border-radius:6px;padding:6px 8px;text-align:center;background:#fff;border:1px solid #5dcaa5;color:#085041}
+  .agent-box .abt{font-size:10px;font-weight:700;color:#0f6e56;margin-bottom:2px}
+  .agent-box .ast{font-size:8.5px;color:#1d9e75}
+
+  /* Tools row */
+  .tools-row{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px}
+  .tool-box{border-radius:6px;padding:6px 8px;text-align:center;background:#fff;border:1px solid #ef9f27;color:#633806}
+  .tool-box .tbt{font-size:9.5px;font-weight:700;color:#854f0b;margin-bottom:1px}
+  .tool-box .tst{font-size:8.5px;color:#ba7517}
+
+  /* MCP section */
+  .mcp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+  .mcp-server{border-radius:8px;padding:8px 10px;border:1.5px solid #5dcaa5;background:#fff}
+  .mcp-server .ms-title{font-size:10px;font-weight:700;color:#085041;margin-bottom:4px}
+  .mcp-tool{font-size:9px;background:#e1f5ee;border-radius:4px;padding:2px 6px;margin:2px 2px 0 0;display:inline-block;color:#0f6e56;border:1px solid #9fe1cb}
+
+  /* RAG section */
+  .rag-steps{display:flex;gap:4px;margin-top:6px;align-items:center}
+  .rag-step{border-radius:6px;padding:5px 8px;text-align:center;flex:1;font-size:9px;font-weight:600;border:1px solid #ef9f27;background:#faeeda;color:#633806}
+  .rag-arr{font-size:11px;color:#ba7517;flex-shrink:0}
+
+  /* Human in the loop */
+  .hitl-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+  .hitl-step{flex:1;border-radius:6px;padding:6px 8px;text-align:center;background:#fff;border:1px solid #e24b4a;color:#791f1f;font-size:9.5px;font-weight:600}
+  .hitl-arr{font-size:11px;color:#a32d2d;flex-shrink:0}
+
+  /* Response types */
+  .resp-row{display:flex;gap:6px;margin-top:6px}
+  .resp-box{flex:1;border-radius:6px;padding:5px 8px;text-align:center;font-size:9px;font-weight:600;background:#e1f5ee;border:1px solid #5dcaa5;color:#085041}
+
+  /* Cross-cutting sidebar */
+  .main-layout{display:flex;gap:10px}
+  .main-col{flex:1;min-width:0}
+  .side-col{width:170px;flex-shrink:0}
+  .side-panel{border-radius:8px;padding:8px 10px;margin-bottom:8px;border:1px solid}
+  .side-panel .sp-title{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px}
+  .side-panel ul{padding-left:11px;margin:0}
+  .side-panel ul li{font-size:8.5px;line-height:1.55}
+
+  /* Bottom panels */
+  .bottom-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+  .bottom-box{border-radius:8px;padding:9px 10px;border:1px solid}
+  .bottom-box .bb-title{font-size:9.5px;font-weight:700;letter-spacing:.4px;margin-bottom:5px;text-transform:uppercase}
+  .bottom-box ol,.bottom-box ul{padding-left:12px;margin:0}
+  .bottom-box li{font-size:8.5px;line-height:1.55}
+
+  /* Tech strip */
+  .tech-strip{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .tech-item{border-radius:6px;padding:5px 10px;border:1px solid #b4b2a9;background:#f1efe8;font-size:9px;color:#444441}
+  .tech-item b{font-weight:700;display:block;color:#2c2c2a;margin-bottom:1px}
+
+  /* channel icons row */
+  .channels{display:flex;flex-direction:column;gap:5px}
+  .ch{border-radius:5px;padding:4px 7px;font-size:9px;font-weight:600;background:#e6f1fb;border:1px solid #85b7eb;color:#0c447c;text-align:center}
+
+  .divider{height:1px;background:#d3d1c7;margin:2px 0}
+  .badge{display:inline-block;border-radius:10px;padding:1px 6px;font-size:8px;font-weight:700;margin-left:4px;vertical-align:middle}
+  .badge-red{background:#fcebeb;color:#a32d2d;border:1px solid #f09595}
+  .badge-green{background:#eaf3de;color:#27500a;border:1px solid #97c459}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>INCIDENT & TICKET ENRICHMENT COPILOT</h1>
+  <p class="subtitle">Secure &bull; Observable &bull; MCP-Orchestrated &bull; RAG-Grounded &bull; Human-Approved</p>
+
+  <div class="main-layout">
+    <!-- MAIN CONTENT -->
+    <div class="main-col">
+
+      <!-- LAYER 1: USERS & CHANNELS -->
+      <div class="layer l-gray">
+        <div class="layer-title" style="color:#444441">Users / Channels</div>
+        <div class="row">
+          <div class="box b-gray center" style="flex:1">Web App (Gradio UI)</div>
+          <div class="box b-gray center" style="flex:1">Chat (Slack / Teams)</div>
+          <div class="box b-gray center" style="flex:1">REST API Client</div>
+          <div class="box b-gray center" style="flex:1">Email / Webhook</div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 2: API GATEWAY & EDGE -->
+      <div class="layer l-blue">
+        <div class="layer-title" style="color:#0c447c">API Gateway &amp; Edge</div>
+        <div class="row">
+          <div class="box b-blue center" style="flex:1">
+            <div class="box-title">Auth (OAuth2 / API Key)</div>
+            <div style="font-size:9px">Bearer token · JWT validation</div>
+          </div>
+          <div class="box b-blue center" style="flex:1">
+            <div class="box-title">Rate Limiting</div>
+            <div style="font-size:9px">Per-user · Per-tenant</div>
+          </div>
+          <div class="box b-blue center" style="flex:1">
+            <div class="box-title">Trace ID Injection</div>
+            <div style="font-size:9px">correlation_id · conv_id</div>
+          </div>
+          <div class="box b-blue center" style="flex:1">
+            <div class="box-title">Request Routing</div>
+            <div style="font-size:9px">Copilot · MCP · RAG paths</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 3: INPUT GUARDRAILS -->
+      <div class="layer l-red">
+        <div class="layer-title" style="color:#791f1f">Input Guardrails</div>
+        <div class="row">
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">PII Detection &amp; Masking</div>
+            <div style="font-size:9px">Regex + NER model</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Prompt Injection Guard</div>
+            <div style="font-size:9px">Pattern + LLM classifier</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Input Validation</div>
+            <div style="font-size:9px">Schema · length · type</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Policy Enforcement</div>
+            <div style="font-size:9px">OPA rules · domain filter</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 4: COPILOT ORCHESTRATOR -->
+      <div class="layer l-purple">
+        <div class="layer-title" style="color:#3c3489">Copilot Orchestrator / Supervisor <span style="font-size:9px;font-weight:400">(LangChain · LangGraph)</span></div>
+        <div style="font-size:9px;text-align:center;color:#534ab7;margin-bottom:4px">Central brain — intent detection, multi-step planning, tool routing, state management, grounded answer synthesis</div>
+        <div class="orch-grid">
+          <div class="orch-box">
+            <div class="bt">Planning &amp; Reasoning</div>
+            <ul>
+              <li>Intent classification</li>
+              <li>Task decomposition</li>
+              <li>Plan selection</li>
+              <li>Re-planning on failure</li>
+            </ul>
+          </div>
+          <div class="orch-box">
+            <div class="bt">Memory Manager</div>
+            <ul>
+              <li>Session / conv memory</li>
+              <li>Long-term context store</li>
+              <li>State management</li>
+              <li>Draft ticket state</li>
+            </ul>
+          </div>
+          <div class="orch-box">
+            <div class="bt">MCP Tool Router</div>
+            <ul>
+              <li>Tool discovery</li>
+              <li>Schema-aware invocation</li>
+              <li>Multi-step chaining</li>
+              <li>Cost / latency aware</li>
+            </ul>
+          </div>
+          <div class="orch-box">
+            <div class="bt">Policy &amp; Guarded Actions</div>
+            <ul>
+              <li>Write op. confirmation</li>
+              <li>Approval rules</li>
+              <li>Risk scoring</li>
+              <li>Escalation rules</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; coordinate &amp; orchestrate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↓</div>
+
+      <!-- LAYER 5: SPECIALIZED AGENTS -->
+      <div class="layer l-teal">
+        <div class="layer-title" style="color:#085041">Specialized Agents</div>
+        <div class="agents-row">
+          <div class="agent-box">
+            <div class="abt">Alarm Retrieval Agent</div>
+            <div class="ast">Search · filter · paginate<br>asset resolution · trends</div>
+          </div>
+          <div class="agent-box">
+            <div class="abt">Analysis Agent</div>
+            <div class="ast">Correlation · priority score<br>flood analysis · root cause</div>
+          </div>
+          <div class="agent-box">
+            <div class="abt">RAG / Document Agent</div>
+            <div class="ast">Embed · retrieve · rank<br>cite · ground answer</div>
+          </div>
+          <div class="agent-box">
+            <div class="abt">Ticket Agent</div>
+            <div class="ast">Draft · search similar<br>confirm · create ticket</div>
+          </div>
+          <div class="agent-box">
+            <div class="abt">Escalation Agent</div>
+            <div class="ast">Human handoff<br>approval workflow</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 6: MCP SERVERS -->
+      <div class="layer l-teal" style="border-color:#1d9e75;background:#d6f4ea">
+        <div class="layer-title" style="color:#085041">MCP Servers (candidate-developed)</div>
+        <div class="mcp-grid">
+          <div class="mcp-server">
+            <div class="ms-title">MCP Server 1 — Alarm Management</div>
+            <div>
+              <span class="mcp-tool">search_asset</span>
+              <span class="mcp-tool">get_alarms</span>
+              <span class="mcp-tool">get_alarm_detail</span>
+              <span class="mcp-tool">alarm_summary</span>
+              <span class="mcp-tool">alarm_trends</span>
+              <span class="mcp-tool">correlate_alarms</span>
+              <span class="mcp-tool">flood_analysis</span>
+              <span class="mcp-tool">rationalization_candidates</span>
+              <span class="mcp-tool">priority_score</span>
+              <span class="mcp-tool">operator_recommendations</span>
+              <span class="mcp-tool">generate_calculation</span>
+              <span class="mcp-tool">execute_calculation</span>
+              <span class="mcp-tool">kpi_definitions</span>
+            </div>
+            <div style="margin-top:5px;font-size:8.5px;color:#0f6e56">Auth · retry · timeout · trace-id · error mapping · pagination</div>
+          </div>
+          <div class="mcp-server">
+            <div class="ms-title">MCP Server 2 — Ticketing (mock Jira / GitHub Issues)</div>
+            <div>
+              <span class="mcp-tool">search_tickets</span>
+              <span class="mcp-tool">get_ticket_detail</span>
+              <span class="mcp-tool">create_ticket_draft</span>
+              <span class="mcp-tool" style="background:#fcebeb;border-color:#f09595;color:#791f1f">confirm_create_ticket ⚠ write</span>
+              <span class="mcp-tool">update_ticket</span>
+              <span class="mcp-tool">link_alarm_to_ticket</span>
+            </div>
+            <div style="margin-top:5px;font-size:8.5px;color:#0f6e56">Write ops require explicit human confirmation before execution</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 7: TOOLS & ENTERPRISE SYSTEMS -->
+      <div class="layer l-amber">
+        <div class="layer-title" style="color:#633806">Tools &amp; Enterprise Systems</div>
+        <div class="tools-row">
+          <div class="tool-box">
+            <div class="tbt">Alarm API Simulator</div>
+            <div class="tst">FastAPI · 14 endpoints<br>Postman-spec aligned</div>
+          </div>
+          <div class="tool-box">
+            <div class="tbt">Vector DB</div>
+            <div class="tst">ChromaDB / Qdrant<br>RAG knowledge base</div>
+          </div>
+          <div class="tool-box">
+            <div class="tbt">Relational DB</div>
+            <div class="tst">PostgreSQL / SQLite<br>tickets · audit log</div>
+          </div>
+          <div class="tool-box">
+            <div class="tbt">LLM Provider</div>
+            <div class="tst">OpenAI GPT-4o<br>model-agnostic layer</div>
+          </div>
+          <div class="tool-box">
+            <div class="tbt">Embedding Model</div>
+            <div class="tst">text-embedding-3-small<br>document + query embed</div>
+          </div>
+          <div class="tool-box">
+            <div class="tbt">Observability</div>
+            <div class="tst">OpenTelemetry · Grafana<br>Prometheus metrics</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 8: RAG PIPELINE -->
+      <div class="layer l-amber" style="background:#fff3dc;border-color:#ba7517">
+        <div class="layer-title" style="color:#633806">Document RAG Pipeline</div>
+        <div class="rag-steps">
+          <div class="rag-step">Document corpus<br><span style="font-size:8px;font-weight:400">procedures · guides · resolutions</span></div>
+          <div class="rag-arr">→</div>
+          <div class="rag-step">Text extraction<br><span style="font-size:8px;font-weight:400">markdown · PDF · txt</span></div>
+          <div class="rag-arr">→</div>
+          <div class="rag-step">Chunking<br><span style="font-size:8px;font-weight:400">500 tok / 50 overlap</span></div>
+          <div class="rag-arr">→</div>
+          <div class="rag-step">Embed + Index<br><span style="font-size:8px;font-weight:400">metadata tagging</span></div>
+          <div class="rag-arr">→</div>
+          <div class="rag-step">Hybrid retrieval<br><span style="font-size:8px;font-weight:400">semantic + keyword</span></div>
+          <div class="rag-arr">→</div>
+          <div class="rag-step">Re-rank + filter<br><span style="font-size:8px;font-weight:400">score threshold 0.75</span></div>
+          <div class="rag-arr">→</div>
+          <div class="rag-step">Ground + cite<br><span style="font-size:8px;font-weight:400">source · section · score</span></div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 9: OUTPUT GUARDRAILS -->
+      <div class="layer l-red" style="background:#fff0f0">
+        <div class="layer-title" style="color:#791f1f">Output Guardrails</div>
+        <div class="row">
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Response validation</div>
+            <div style="font-size:9px">Schema · completeness check</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Hallucination detection</div>
+            <div style="font-size:9px">Grounding check vs sources</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">PII redaction</div>
+            <div style="font-size:9px">Strip before display</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Confidence scoring</div>
+            <div style="font-size:9px">Low conf → caveat added</div>
+          </div>
+          <div class="box b-red center" style="flex:1">
+            <div class="box-title">Prompt injection filter</div>
+            <div style="font-size:9px">Sanitise retrieved docs</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 10: HUMAN IN THE LOOP -->
+      <div class="layer l-coral">
+        <div class="layer-title" style="color:#712b13">Human-in-the-Loop (ticket write ops &amp; escalation)</div>
+        <div class="hitl-row">
+          <div class="hitl-step">Copilot drafts<br>incident ticket</div>
+          <div class="hitl-arr">→</div>
+          <div class="hitl-step">GUI shows<br>editable preview</div>
+          <div class="hitl-arr">→</div>
+          <div class="hitl-step">Operator reviews<br>edits fields</div>
+          <div class="hitl-arr">→</div>
+          <div class="hitl-step">Explicit confirm<br>button click</div>
+          <div class="hitl-arr">→</div>
+          <div class="hitl-step">MCP executes<br>confirm_create_ticket</div>
+          <div class="hitl-arr">→</div>
+          <div class="hitl-step">Ticket ID returned<br>audit log written</div>
+        </div>
+      </div>
+
+      <div class="arrow-row">↓</div>
+
+      <!-- LAYER 11: FINAL RESPONSE -->
+      <div class="layer l-green">
+        <div class="layer-title" style="color:#27500a">Final response to user (Gradio GUI)</div>
+        <div class="resp-row">
+          <div class="resp-box">Chat answer<br><span style="font-size:8px;font-weight:400">grounded prose</span></div>
+          <div class="resp-box">Ticket draft<br><span style="font-size:8px;font-weight:400">structured preview</span></div>
+          <div class="resp-box">Similar tickets<br><span style="font-size:8px;font-weight:400">history panel</span></div>
+          <div class="resp-box">RAG citations<br><span style="font-size:8px;font-weight:400">source · section · score</span></div>
+          <div class="resp-box">MCP trace<br><span style="font-size:8px;font-weight:400">tool · duration · status</span></div>
+          <div class="resp-box">Alarm detail<br><span style="font-size:8px;font-weight:400">priority · corr. assets</span></div>
+        </div>
+      </div>
+
+    </div><!-- /main-col -->
+
+    <!-- SIDE PANELS -->
+    <div class="side-col">
+
+      <div class="side-panel l-blue" style="border-color:#85b7eb">
+        <div class="sp-title" style="color:#0c447c">Observability</div>
+        <ul style="color:#185fa5">
+          <li>Distributed tracing (OTel)</li>
+          <li>Logs aggregation</li>
+          <li>Metrics &amp; dashboards</li>
+          <li>Token usage tracking</li>
+          <li>Cost per request</li>
+          <li>Retrieval score logs</li>
+          <li>MCP tool latency</li>
+          <li>Alerts &amp; anomaly detect</li>
+        </ul>
+      </div>
+
+      <div class="side-panel" style="background:#eeedfe;border-color:#afa9ec">
+        <div class="sp-title" style="color:#3c3489">Governance &amp; Security</div>
+        <ul style="color:#534ab7">
+          <li>RBAC / ABAC</li>
+          <li>Data encryption at rest</li>
+          <li>Secrets via .env / vault</li>
+          <li>Immutable audit log</li>
+          <li>Write op. approval flow</li>
+          <li>Policy engine (OPA)</li>
+          <li>Input sanitisation</li>
+          <li>No secrets in logs</li>
+        </ul>
+      </div>
+
+      <div class="side-panel l-amber" style="border-color:#ef9f27">
+        <div class="sp-title" style="color:#633806">Model &amp; Prompt Governance</div>
+        <ul style="color:#854f0b">
+          <li>Model versioning</li>
+          <li>Prompt versioning</li>
+          <li>Model-agnostic layer</li>
+          <li>Guardrail policies</li>
+          <li>Evaluation harness</li>
+          <li>Approval workflows</li>
+        </ul>
+      </div>
+
+      <div class="side-panel l-green" style="border-color:#97c459">
+        <div class="sp-title" style="color:#27500a">Quality &amp; Evaluation</div>
+        <ul style="color:#3b6d11">
+          <li>Response quality score</li>
+          <li>RAG retrieval eval</li>
+          <li>Hallucination rate</li>
+          <li>Citation accuracy</li>
+          <li>Human feedback loop</li>
+          <li>e2e test coverage</li>
+        </ul>
+      </div>
+
+      <div class="side-panel l-coral" style="border-color:#d85a30">
+        <div class="sp-title" style="color:#712b13">Cost &amp; Performance</div>
+        <ul style="color:#993c1d">
+          <li>Latency monitoring</li>
+          <li>LLM cost tracking</li>
+          <li>Semantic cache layer</li>
+          <li>Async tool invocation</li>
+          <li>Load testing</li>
+          <li>Docker health checks</li>
+        </ul>
+      </div>
+
+    </div><!-- /side-col -->
+  </div><!-- /main-layout -->
+
+  <!-- BOTTOM: 4-column panels -->
+  <div class="bottom-grid">
+
+    <div class="bottom-box l-blue" style="border-color:#85b7eb">
+      <div class="bb-title" style="color:#0c447c">Request lifecycle</div>
+      <ol style="color:#185fa5">
+        <li>User sends NL request via Gradio</li>
+        <li>Gateway authenticates &amp; injects trace-id</li>
+        <li>Input guardrails validate &amp; sanitise</li>
+        <li>Orchestrator detects intent &amp; plans</li>
+        <li>MCP client discovers &amp; calls tools</li>
+        <li>Alarm API returns structured data</li>
+        <li>RAG retrieves document evidence</li>
+        <li>Output guardrails validate response</li>
+        <li>HITL confirmation for write ops</li>
+        <li>Grounded answer + citations returned</li>
+      </ol>
+    </div>
+
+    <div class="bottom-box" style="background:#eeedfe;border-color:#afa9ec">
+      <div class="bb-title" style="color:#3c3489">Key chaining flows (from Postman)</div>
+      <ul style="color:#534ab7">
+        <li><b>CHAIN-09</b> EastRefinery alarms → detail → priority → recommendations</li>
+        <li><b>CHAIN-01</b> Asset search → summary → rationalization</li>
+        <li><b>CHAIN-03</b> Compressor search → correlation → alarm → recommendations</li>
+        <li><b>CHAIN-02</b> Flood analysis → alarms in window → summary</li>
+        <li><b>CHAIN-10</b> Generate KPI calc → execute → rationalization</li>
+      </ul>
+    </div>
+
+    <div class="bottom-box l-amber" style="border-color:#ef9f27">
+      <div class="bb-title" style="color:#633806">Design trade-offs</div>
+      <ul style="color:#854f0b">
+        <li><b>MCP vs direct call:</b> all alarm ops through MCP only</li>
+        <li><b>Autonomy vs safety:</b> write ops always need human confirm</li>
+        <li><b>Latency vs accuracy:</b> cache + async for speed</li>
+        <li><b>RAG hallucination:</b> grounding check + score threshold</li>
+        <li><b>Prompt injection:</b> doc sanitisation before LLM</li>
+        <li><b>Cost vs quality:</b> model-agnostic, swap LLM any time</li>
+      </ul>
+    </div>
+
+    <div class="bottom-box l-green" style="border-color:#97c459">
+      <div class="bb-title" style="color:#27500a">Scaling strategies</div>
+      <ul style="color:#3b6d11">
+        <li>Docker Compose → K8s horizontal scale</li>
+        <li>Async MCP tool invocation (asyncio)</li>
+        <li>Semantic cache (Redis + embeddings)</li>
+        <li>ChromaDB → Qdrant / Pinecone at scale</li>
+        <li>Agent pool with load balancing</li>
+        <li>Multi-region deployment ready</li>
+        <li>Model routing (mini → full on complexity)</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- TECHNOLOGY STRIP -->
+  <div class="tech-strip">
+    <div class="tech-item"><b>Orchestration</b>LangChain · LangGraph</div>
+    <div class="tech-item"><b>MCP SDK</b>mcp (Python)</div>
+    <div class="tech-item"><b>LLM</b>OpenAI GPT-4o / GPT-4o-mini</div>
+    <div class="tech-item"><b>Embeddings</b>text-embedding-3-small</div>
+    <div class="tech-item"><b>Vector DB</b>ChromaDB · Qdrant</div>
+    <div class="tech-item"><b>API Simulator</b>FastAPI · Uvicorn</div>
+    <div class="tech-item"><b>GUI</b>Gradio</div>
+    <div class="tech-item"><b>DB</b>PostgreSQL · SQLite</div>
+    <div class="tech-item"><b>Observability</b>OpenTelemetry · Grafana</div>
+    <div class="tech-item"><b>Tests</b>pytest · httpx</div>
+    <div class="tech-item"><b>CI/CD</b>GitHub Actions</div>
+    <div class="tech-item"><b>Infra</b>Docker · Docker Compose</div>
+  </div>
+
+</div>
+</body>
+</html>
