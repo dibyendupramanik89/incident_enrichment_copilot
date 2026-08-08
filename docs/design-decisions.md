@@ -1,0 +1,112 @@
+# Design Decisions
+
+## 1. MCP Protocol: HTTP JSON-RPC over stdio
+
+**Decision:** Implement MCP as HTTP JSON-RPC 2.0 (POST endpoints) rather than using stdio transport or the official MCP SDK.
+
+**Rationale:**
+- HTTP transport enables Docker Compose networking — each service runs in its own container and communicates over the Docker network
+- HTTP is debuggable with `curl` and standard tooling
+- stdio transport requires a single process boundary, which conflicts with containerised deployment
+- Avoids a heavy SDK dependency for a well-understood protocol
+
+**Trade-off:** Not protocol-compatible with MCP clients that expect stdio transport (e.g. Claude Desktop). Would require an HTTP→stdio adapter to interop with those clients.
+
+---
+
+## 2. BM25 over Embedding-based RAG
+
+**Decision:** Use BM25 (pure Python) instead of a vector database + embedding model.
+
+**Rationale:**
+- Zero infrastructure: no Qdrant, Pinecone, Weaviate, or Chroma required
+- Zero ML dependencies: no sentence-transformers, no GPU, no model download
+- Deterministic: same query always returns same results (no approximate nearest-neighbour variance)
+- Fully auditable: scores are interpretable (term frequency × IDF)
+- Sufficient for the 60-chunk corpus in this assignment
+
+**Trade-off:** Lexical only — BM25 misses semantic matches (e.g. "pump failure" vs "impeller degradation"). A hybrid approach (BM25 + dense retrieval) would improve recall at larger corpus sizes.
+
+**Scale threshold:** Would reconsider this decision at corpus sizes > 5,000 chunks or when semantic similarity becomes critical for recall.
+
+---
+
+## 3. Fallback LLM Answer
+
+**Decision:** Generate a structured text answer from raw MCP + RAG data when `OPENAI_API_KEY` is absent, rather than returning an error.
+
+**Rationale:**
+- Makes the system fully usable without an OpenAI account
+- Satisfies all format requirements (markdown sections, citations, MCP trace)
+- Easier to demo and evaluate locally
+- Reduces evaluation risk: the assignment can be assessed without an API key
+
+**Trade-off:** Fallback answer is templated, not synthesised. It may feel mechanical compared to an LLM-generated response.
+
+---
+
+## 4. In-memory Ticket Store
+
+**Decision:** Use an in-memory dictionary for the mock ticketing system rather than a real database or Jira integration.
+
+**Rationale:**
+- Assignment specifies "candidate-built mock ticketing API" as a valid option
+- Eliminates Jira/Azure DevOps credentials from the evaluation environment
+- Keeps Docker Compose self-contained (no external services)
+- Seeded with realistic historical tickets for demo purposes
+
+**Trade-off:** Tickets reset on service restart. Production would use PostgreSQL or the real ticketing API.
+
+---
+
+## 5. Input Guardrails before Orchestration
+
+**Decision:** Apply PII masking and injection detection *before* any data reaches the orchestrator or LLM.
+
+**Rationale:**
+- PII should never reach the LLM — it could be logged or echoed in responses
+- Prompt injection via the user input field is the most common attack vector for LLM applications
+- Guardrails at the boundary are more reliable than guardrails inside the prompt
+
+**Implementation:** `InputGuardrails.run(message)` in `guardrails.py` — pure Python regex, no external library.
+
+---
+
+## 6. HITL as a Hard Gate, Not a Soft Suggestion
+
+**Decision:** The `confirm_create_ticket` tool is the *only* path that writes to the ticket store. The orchestrator never calls it automatically.
+
+**Rationale:**
+- Assignment requirement: "Require explicit approval before a ticket write operation"
+- Ticket creation has real operational consequences — a false ticket wastes engineer time
+- The 7-tab GUI is designed so the operator can review and edit the draft before confirming
+
+**Implementation:** `create_ticket_draft` creates a draft (no side effects). The frontend's "Confirm Ticket" button triggers a separate `POST /confirm-ticket` API call.
+
+---
+
+## 7. Single Orchestrator, Not Agent Loop
+
+**Decision:** Use a fixed 9-step pipeline in `orch.py` rather than an LLM-driven agent loop (ReAct, function calling, etc.).
+
+**Rationale:**
+- Predictable: every query follows the same tool-call sequence; no non-deterministic planning
+- Debuggable: all 9 steps logged; MCP trace always contains the same call types
+- Sufficient for the defined use cases (the query types are known and bounded)
+- Avoids agent hallucination in tool selection
+
+**Trade-off:** Not flexible for queries outside the defined intent space. An LLM agent loop would handle open-ended queries better.
+
+---
+
+## 8. Gradio for GUI
+
+**Decision:** Use Gradio (Blocks API) for the frontend rather than React/Vue.
+
+**Rationale:**
+- Fast to implement with rich components (dataframes, tabs, markdown, HTML)
+- Python-native — no separate npm build step
+- Easily containerised
+- Sufficient for the demo and evaluation
+
+**Trade-off:** Not suitable for production-grade UI. React would provide better state management and UX.

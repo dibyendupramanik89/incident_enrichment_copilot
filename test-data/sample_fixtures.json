@@ -1,0 +1,44 @@
+{
+  "assets": [
+    {
+      "asset_id": "ASSET-001",
+      "name": "Boiler Feed Pump 101",
+      "asset_type": "pump",
+      "site": "EastRefinery",
+      "unit": "U-100"
+    },
+    {
+      "asset_id": "ASSET-003",
+      "name": "Compressor C-201",
+      "asset_type": "compressor",
+      "site": "EastRefinery",
+      "unit": "U-200"
+    }
+  ],
+  "alarms": [
+    {
+      "alarm_id": "ALM-001",
+      "asset_id": "ASSET-001",
+      "alarm_name": "Low Suction Pressure",
+      "severity": "critical",
+      "status": "active"
+    },
+    {
+      "alarm_id": "ALM-003",
+      "asset_id": "ASSET-003",
+      "alarm_name": "High Discharge Temperature",
+      "severity": "high",
+      "status": "acknowledged"
+    }
+  ],
+  "tickets": [
+    {
+      "ticket_id": "INC-1001",
+      "title": "BFP-101 recurring low suction pressure — root cause investigation",
+      "asset_id": "ASSET-001",
+      "alarm_ids": ["ALM-001"],
+      "status": "closed",
+      "priority": "high"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+version: '3.9'
+
+services:
+  alarm-api:
+    build:
+      context: .
+      dockerfile: alarm-api/Dockerfile
+    ports:
+      - '8000:8000'
+    environment:
+      - PORT=8000
+      - ALARM_API_TOKEN=${ALARM_API_TOKEN:-demo-token}
+
+  alarm-management-mcp:
+    build:
+      context: .
+      dockerfile: mcp-servers/alarm-management/Dockerfile
+    ports:
+      - '9000:9000'
+    environment:
+      - ALARM_API_BASE_URL=http://alarm-api:8000
+      - ALARM_API_TOKEN=${ALARM_API_TOKEN:-demo-token}
+    depends_on:
+      - alarm-api
+
+  ticketing-mcp:
+    build:
+      context: .
+      dockerfile: mcp-servers/ticketing/Dockerfile
+    ports:
+      - '9001:9001'
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - '8080:8080'
+    environment:
+      - OPENAI_API_KEY
+      - OPENAI_API_BASE
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - MCP_ALARM_URL=http://alarm-management-mcp:9000
+      - MCP_TICKETING_URL=http://ticketing-mcp:9001
+      - MCP_TIMEOUT_SECONDS=20
+      - RAG_DOCUMENTS_DIR=/workspace/rag/documents
+    volumes:
+      - ./:/workspace:ro
+    depends_on:
+      - alarm-management-mcp
+      - ticketing-mcp
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    ports:
+      - '7860:7860'
+    environment:
+      - BACKEND_URL=http://backend:8080
+    depends_on:
+      - backend
