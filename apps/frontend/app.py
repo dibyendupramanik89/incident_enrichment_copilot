@@ -279,7 +279,7 @@ with gr.Blocks(
 ) as app:
     gr.Markdown(
         """# 🏭 Incident & Ticket Enrichment Copilot
-> Alarm-aware operations assistant — MCP + BM25 RAG + HITL confirmation"""
+> Alarm-aware operations assistant — MCP + ChromaDB RAG + HITL confirmation"""
     )
 
     audit_state = gr.State([])

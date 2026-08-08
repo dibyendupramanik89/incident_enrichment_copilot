@@ -2,7 +2,7 @@
 
 **Senior Software Engineer – Copilot Integration Assignment**
 
-An AI-powered industrial operations assistant that combines **MCP tool calls**, **BM25 RAG retrieval**, and **Human-in-the-Loop confirmation** to help operators investigate alarms and create enriched incident tickets.
+An AI-powered industrial operations assistant that combines **MCP tool calls**, **ChromaDB RAG retrieval**, and **Human-in-the-Loop confirmation** to help operators investigate alarms and create enriched incident tickets.
 
 ---
 
@@ -19,7 +19,7 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 | Natural-language alarm investigation | Intent detection → 9-step orchestration pipeline |
 | Alarm data via MCP | All Alarm API calls go through the MCP server |
 | Ticket operations via MCP | Draft creation and confirmation through Ticketing MCP |
-| BM25 document retrieval | Pure-Python BM25, zero ML dependencies, 60 indexed chunks |
+| ChromaDB vector retrieval | ChromaDB + `nomic-embed-text` embeddings (60 indexed chunks) |
 | Human-in-the-Loop | Operator must explicitly confirm before any ticket write |
 | Input guardrails | PII masking, prompt injection blocking, length validation |
 | Output guardrails | Confidence scoring, PII redaction, low-confidence caveats |
@@ -37,7 +37,7 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 | API framework | FastAPI + Uvicorn |
 | MCP protocol | HTTP JSON-RPC (custom lightweight implementation) |
 | LLM | OpenAI GPT-4o-mini (optional; structured fallback if no key) |
-| RAG retrieval | BM25 (pure Python — `math`, `collections`, `re`) |
+| RAG retrieval | ChromaDB vector store + `nomic-embed-text` embeddings |
 | GUI | Gradio 4+ (Blocks with 7 tabs) |
 | HTTP client | httpx (async, with retry + timeout) |
 | Config | python-dotenv |
@@ -68,7 +68,7 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 │   Step 4  Priority scoring          ─┤  → Alarm MCP :9000       │
 │   Step 5  Operator recommendations  ─┤  → Alarm API  :8000      │
 │   Step 6  Similar ticket search     ─┘  via Ticketing MCP :9001 │
-│   Step 7  BM25 RAG retrieval (local, from rag/.index/)          │
+│   Step 7  ChromaDB RAG retrieval (local, from ChromaDB)        │
 │   Step 8  LLM synthesis (GPT-4o-mini / structured fallback)     │
 │   Step 9  Draft ticket creation (Ticketing MCP, no write yet)   │
 │                                                                 │
@@ -89,9 +89,9 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 │  FastAPI simulator     │   │                           │
 │  14 endpoints          │   │  rag/documents/ (6 files) │
 │  7 assets · 7 alarms   │   │  rag/ingestion/ingest.py  │
-│  Priority scoring      │   │  → rag/.index/index.json  │
+│  Priority scoring      │   │  → ChromaDB collection (rag_corpus)  │
 │  Recommendations       │   │  rag/retrieval/           │
-│  Correlation · Trends  │   │  BM25, MIN_SCORE=0.10     │
+│  Correlation · Trends  │   │  ChromaDB + nomic-embed-text (fallback: BM25)     │
 └────────────────────────┘   └──────────────────────────┘
 ```
 
@@ -103,7 +103,7 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 4. **Orchestrator Step 1**: intent classified (`create_incident`, `investigate`, etc.)
 5. **Steps 2–5**: MCP Client → Alarm MCP → Alarm API: asset resolved, alarms retrieved, priority scored, recommendations fetched
 6. **Step 6**: MCP Client → Ticketing MCP: similar historical tickets searched
-7. **Step 7**: BM25 Retriever: top-4 document chunks with relevance scores
+7. **Step 7**: ChromaDB Retriever: top-4 document chunks with relevance scores (embeddings via `nomic-embed-text`, BM25 fallback available)
 8. **Step 8**: LLM (or fallback): synthesizes grounded answer from all context
 9. **Output Guardrails**: confidence scored, PII redacted, caveat added if low confidence
 10. **Step 9**: Draft ticket auto-created via Ticketing MCP (NOT yet written)
@@ -125,7 +125,7 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 ├── docs/
 │   ├── architecture.md          Full request-flow narrative
 │   ├── mcp-tool-catalog.md      All 20 MCP tools with schemas
-│   ├── rag-design.md            BM25 design and retrieval strategy
+│   ├── rag-design.md            ChromaDB design and retrieval strategy
 │   ├── design-decisions.md      Key choices and rationale
 │   └── known-limitations.md     Gaps and future improvements
 ├── alarm-api/
@@ -137,7 +137,7 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 │   │   ├── api.py               FastAPI: /chat /confirm-ticket /drafts /tickets
 │   │   ├── orch.py              9-step CopilotOrchestrator + guardrails
 │   │   ├── mcp_client.py        HTTP JSON-RPC client (alarm + ticketing MCP)
-│   │   ├── retriever.py         BM25 adapter (delegates to rag/retrieval)
+│   │   ├── retriever.py         ChromaDB retriever adapter (delegates to rag/retrieval; BM25 fallback)
 │   │   ├── guardrails.py        Input + Output guardrails
 │   │   ├── main.py              Uvicorn launcher
 │   │   ├── requirements.txt
@@ -157,9 +157,9 @@ An AI-powered industrial operations assistant that combines **MCP tool calls**, 
 │       └── Dockerfile
 ├── rag/
 │   ├── documents/               6 operational knowledge documents
-│   ├── ingestion/ingest.py      BM25 index builder
-│   ├── retrieval/retriever.py   BM25 retriever (pure Python)
-│   └── .index/index.json        Pre-built BM25 index (60 chunks)
+│   ├── ingestion/ingest.py      Embeds chunks and upserts vectors into ChromaDB
+│   ├── retrieval/retriever.py   ChromaDB retriever (with BM25 fallback)
+│   └── .chromadb/               Local ChromaDB store (vector collection: rag_corpus)
 └── tests/
     ├── unit/
     ├── integration/
@@ -226,10 +226,11 @@ curl http://localhost:9000/health
 | `operating_procedures.md` | Equipment specs: normal ranges, alarm thresholds, trip values |
 | `troubleshooting_guide.md` | BFP/compressor/motor troubleshooting trees |
 
-**Retrieval:** BM25 (pure Python). Index: `rag/.index/index.json` (60 chunks). No embeddings, no vector DB.
+**Retrieval:** Dense semantic search using `nomic-embed-text` embeddings stored in a local ChromaDB collection (`rag_corpus`). The ingestion script embeds document chunks and upserts vectors into ChromaDB.
 
 ```bash
-python rag/ingestion/ingest.py   # rebuilds index
+# Rebuild the ChromaDB vector index (embeddings → ChromaDB)
+.venv/bin/python rag/ingestion/ingest.py
 ```
 
 See [`docs/rag-design.md`](docs/rag-design.md) for the full design.
@@ -429,7 +430,7 @@ Copy `.env.example` → `.env`:
 5. MCP `priority_score` (ALM-001) → score=0.92, label=critical
 6. MCP `operator_recommendations` (ALM-001) → 3 actions
 7. MCP `search_tickets` (ASSET-001) → INC-1001 matched
-8. BM25 RAG → `troubleshooting_guide.md` (0.74), `historical_resolutions.md` (0.91), `incident_enrichment_overview.md` (1.00)
+8. ChromaDB RAG → `troubleshooting_guide.md` (0.74), `historical_resolutions.md` (0.91), `incident_enrichment_overview.md` (1.00)
 9. LLM synthesis → grounded answer, 4 citations
 10. Draft ticket auto-created → awaits HITL confirmation
 
@@ -439,7 +440,7 @@ Copy `.env.example` → `.env`:
 
 - Alarm API token is static (`demo-token`) for the demo
 - In-memory ticket and draft store — resets on service restart
-- BM25 is sufficient for the document corpus size (60 chunks)
+- Dense semantic retrieval (ChromaDB) is sufficient for the document corpus size (60 chunks); BM25 fallback remains available
 - OpenAI key is optional; fallback answer meets all format requirements
 - All services run on localhost for local mode
 
@@ -449,7 +450,7 @@ Copy `.env.example` → `.env`:
 
 See [`docs/known-limitations.md`](docs/known-limitations.md).
 
-- BM25 is lexical only — no semantic similarity
+- Dense retrieval + embeddings improves semantic recall; BM25 fallback is lexical-only when used
 - Ticketing store is in-memory (mock, not persistent)
 - No conversation memory across sessions
 - Tests are scaffolded but coverage is not complete

@@ -6,7 +6,7 @@
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| BM25 is lexical only | Misses semantic matches ("pump failure" vs "impeller degradation") | Add embedding layer for hybrid search |
+| Dense retrieval required | Lexical-only retrieval can miss semantic matches; embeddings improve recall | System uses ChromaDB + `nomic-embed-text` for semantic search; BM25 fallback available for zero-dependency runs |
 | 60 chunks from 6 documents | Limited coverage of the knowledge domain | Expand corpus with real manuals |
 | No re-indexing trigger | Must manually run `ingest.py` after doc changes | Add file-watcher or webhook to auto-rebuild |
 | No chunk-level metadata filtering | Cannot filter RAG results by date or document type | Add metadata to index schema |
@@ -59,7 +59,7 @@
 |---|---|---|
 | No CI/CD included | No automatic build/test/deploy | Add GitHub Actions workflow |
 | No demo video | Evaluators must run locally | Record and link a Loom/YouTube demo |
-| BM25 index not committed to git | Must be rebuilt after clone | Either commit index or add `make rag-index` to Docker build |
+| ChromaDB index not committed to git | Must be rebuilt after clone | Run `make rag-index` (embeds documents and upserts vectors into local ChromaDB) or build index during Docker image startup |
 | Docker not tested end-to-end | `docker compose up --build` may have path issues | Test on a fresh Linux VM |
 
 ---

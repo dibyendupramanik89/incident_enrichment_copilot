@@ -2,9 +2,9 @@
 
 ## Overview
 
-The RAG pipeline uses **BM25** (Best Match 25) — a classical term-frequency based retrieval algorithm implemented in pure Python. No embedding model, no vector database, no external ML service is required.
+The RAG pipeline uses dense vector retrieval with a local ChromaDB vector store and the `nomic-embed-text` embedding model. Documents are chunked, embedded with the Nomic embedding model (via Ollama or the nomic client), and stored in ChromaDB for fast cosine-similarity search.
 
-**Design rationale:** For a corpus of 60 chunks across 6 documents, BM25 provides fast, deterministic, and fully auditable retrieval. It is sufficient for the scope of this use case and removes all infrastructure complexity.
+**Design rationale:** Dense embeddings + a lightweight vector DB improve semantic retrieval for short, diverse operational documents while remaining easy to run locally (Ollama or nomic) and portable to hosted embedding services if needed.
 
 ---
 
@@ -27,35 +27,32 @@ The RAG pipeline uses **BM25** (Best Match 25) — a classical term-frequency ba
 rag/documents/  ──[read .md/.txt files]──►  text
                                               │
                                          [chunk_text()]
-                                         900 chars/chunk
-                                         150 char overlap
+                                         ~800–900 chars/chunk
+                                         ~150 char overlap
                                               │
-                                         [tokenise()]
-                                         regex: [a-zA-Z0-9\-]{2,}
-                                         lowercased
+                                   [embed with nomic-embed-text]
+                                vector dim: model-dependent (e.g. 768)
                                               │
-                                         [compute term_doc_freq]
-                                         count documents containing each term
-                                              │
-                                         [serialise to JSON]
-                                         rag/.index/index.json
+                                         [upsert into ChromaDB]
+                                         collection: "rag_corpus"
 ```
 
-**Run ingestion:**
+**Run ingestion (embeddings → ChromaDB):**
 ```bash
-python rag/ingestion/ingest.py
+# Ensure Ollama (or nomic client) is available and reachable
+# Example (Ollama): start Ollama, then run the local ingest which calls the embedding model
+.venv/bin/python rag/ingestion/ingest.py
 ```
 
 **Output:**
 ```
-  Indexed alarm_response_playbook.md: 10 chunks
-  Indexed faq.md: 8 chunks
-  Indexed historical_resolutions.md: 13 chunks
-  Indexed incident_enrichment_overview.md: 8 chunks
-  Indexed operating_procedures.md: 10 chunks
-  Indexed troubleshooting_guide.md: 11 chunks
-Index saved → rag/.index/index.json
-  Total chunks: 60
+  Embedding alarm_response_playbook.md: 10 chunks... done
+  Embedding faq.md: 8 chunks... done
+  Embedding historical_resolutions.md: 13 chunks... done
+  Embedding incident_enrichment_overview.md: 8 chunks... done
+  Embedding operating_procedures.md: 10 chunks... done
+  Embedding troubleshooting_guide.md: 11 chunks... done
+  Ingestion complete. 60 chunks stored in ChromaDB (collection: rag_corpus)
 ```
 
 ---
@@ -64,10 +61,10 @@ Index saved → rag/.index/index.json
 
 | Parameter | Value | Rationale |
 |---|---|---|
-| Chunk size | 900 characters | Fits in context window while keeping coherent procedure steps |
+| Chunk size | 800–900 characters | Fits in context window while keeping coherent procedure steps |
 | Overlap | 150 characters | Prevents splitting sentences at chunk boundaries |
 | Chunk ID | `{source}::chunk_{n}` | Enables deduplication and source attribution |
-| Metadata | source, section (first line), length | Enables citation and relevance filtering |
+| Metadata | source, section (first line), length, text_hash | Enables citation, freshness checks and de-duplication |
 
 ---
 
@@ -77,27 +74,22 @@ Plain text extraction from markdown files using Python `str.read_text()`. No PDF
 
 ---
 
-## Retrieval Method: BM25
+## Retrieval Method: Dense Embedding Search (ChromaDB)
 
-**Algorithm:** BM25 (Robertson & Spärck Jones, 1976)
+**Algorithm:** Semantic search using `nomic-embed-text` embeddings stored in ChromaDB. Queries are embedded with the same model and results are ranked by cosine similarity.
 
 **Parameters:**
-- `k1 = 1.5` (term frequency saturation)
-- `b = 0.75` (document length normalisation)
-- `MIN_SCORE = 0.10` (minimum normalised score to include in results)
+- `embedding_model = nomic-embed-text` (via Ollama or nomic client)
+- `vector_store = ChromaDB` (local collection: `rag_corpus`)
+- `top_k = 4` (candidate documents returned per query)
+- `MIN_SIMILARITY = 0.12` (optional cutoff; tuned on small corpus)
 
-**Scoring formula:**
+**Scoring:**
+Cosine similarity between normalized query vector q and chunk vector d:
 
-$$\text{BM25}(d, q) = \sum_{t \in q} \text{IDF}(t) \cdot \frac{f(t, d) \cdot (k_1 + 1)}{f(t, d) + k_1 \cdot (1 - b + b \cdot \frac{|d|}{\text{avgdl}})}$$
+$$\text{sim}(q,d) = \frac{q \cdot d}{\|q\| \, \|d\|}$$
 
-Where:
-- $\text{IDF}(t) = \log\left(\frac{N - df(t) + 0.5}{df(t) + 0.5} + 1\right)$
-- $f(t, d)$ = term frequency in document chunk
-- $|d|$ = chunk length in tokens
-- $\text{avgdl}$ = average chunk length across corpus
-- $N$ = total number of chunks (60)
-
-**Score normalisation:** All scores normalised by the top result score → range [0, 1].
+Similarity scores are optionally re-scaled into a [0,1] range for display and combined with other signals (e.g., ticket-matching score, alarm metadata) for final confidence.
 
 ---
 
@@ -112,13 +104,13 @@ Where:
 
 ## Hybrid Search
 
-Not implemented. BM25 alone is sufficient for the 60-chunk corpus. A hybrid approach (BM25 + dense embedding) would be considered at corpus sizes > 10,000 chunks.
+Hybrid search (sparse BM25 + dense embeddings) is supported conceptually and can be enabled if desired. For the current corpus (≈60 chunks) dense retrieval with ChromaDB provides strong semantic matches; hybrid approaches are recommended when merging very large corpora or when exact term matches must be prioritized.
 
 ---
 
 ## Ranking / Reranking
 
-Results are ranked by BM25 score (descending). No reranking step — the BM25 score is directly used as the citation relevance score displayed in the GUI.
+Initial ranking is by cosine similarity from ChromaDB (highest → lowest). An optional reranker (LLM-based or lightweight heuristic) can re-score the top-k candidates by relevance to the query, presence of alarm keywords, or timestamp/freshness.
 
 ---
 
@@ -127,10 +119,12 @@ Results are ranked by BM25 score (descending). No reranking step — the BM25 sc
 Each retrieved chunk is returned as:
 ```json
 {
-  "source": "alarm_response_playbook.md",
-  "content": "...(chunk text)...",
-  "score": 0.85,
-  "chunk_id": "alarm_response_playbook.md::chunk_3"
+     "source": "alarm_response_playbook.md",
+     "content": "...(chunk text)...",
+     "score": 0.85,                # cosine similarity (or normalized score)
+     "chunk_id": "alarm_response_playbook.md::chunk_3",
+     "vector_id": "uuid-or-hash",
+     "metadata": { "section": "...", "length": 123 }
 }
 ```
 
@@ -173,14 +167,14 @@ The RAG pipeline protects against prompt injection embedded inside retrieved doc
 
 ## Index Refresh Process
 
-The index is a flat JSON file at `rag/.index/index.json`. To rebuild:
+The vector index is stored in a local ChromaDB collection (default: `rag_corpus`). To rebuild after adding or modifying documents:
 
 ```bash
-# After adding or modifying documents in rag/documents/
-python rag/ingestion/ingest.py
+# Ensure Ollama (or nomic client) is running and reachable; then:
+.venv/bin/python rag/ingestion/ingest.py
 ```
 
-The backend's `RAGRetriever` loads the index at startup. After a refresh, restart the backend service (or call `retriever.reload()` programmatically).
+The backend's `RAGRetriever` loads vectors from ChromaDB at startup. After a refresh, restart the backend service or call `retriever.reload()` to refresh the in-memory cache.
 
 ---
 

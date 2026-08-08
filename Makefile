@@ -8,7 +8,7 @@ help:
 	@echo "Incident & Ticket Enrichment Copilot — Makefile targets"
 	@echo ""
 	@echo "  make install        Install all Python dependencies"
-	@echo "  make rag-index      Build the BM25 retrieval index"
+	@echo "  make rag-index      Build the ChromaDB vector index (embeddings → ChromaDB)"
 	@echo "  make run            Start all 5 services (requires 5 terminals or tmux)"
 	@echo "  make test           Run full test suite"
 	@echo "  make test-unit      Unit tests only"
@@ -75,8 +75,8 @@ lint:
 
 clean:
 	find . -name "__pycache__" -not -path "./.venv/*" | xargs rm -rf
-	rm -rf rag/.index/
-	@echo "Cleaned __pycache__ and RAG index"
+	rm -rf rag/.index/ rag/.chromadb/
+	@echo "Cleaned __pycache__ and RAG index/chromadb"
 
 check-health:
 	@curl -s http://localhost:8000/health | python3 -m json.tool

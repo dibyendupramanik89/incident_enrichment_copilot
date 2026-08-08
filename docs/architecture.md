@@ -52,8 +52,8 @@
 │  │  Step 6  Similar ticket search via MCP                   │  │
 │  │          search_tickets(asset_id, query)                 │  │
 │  │                                                          │  │
-│  │  Step 7  BM25 RAG retrieval (local)                      │  │
-│  │          retrieve(query, k=4) from rag/.index/           │  │
+│  │  Step 7  ChromaDB RAG retrieval (local)                 │  │
+│  │          retrieve(query, k=4) from ChromaDB collection   │  │
 │  │                                                          │  │
 │  │  Step 8  LLM synthesis                                   │  │
 │  │          OpenAI GPT-4o-mini with full context            │  │
@@ -121,16 +121,16 @@
 │       │                                                         │
 │  rag/ingestion/ingest.py                                        │
 │       │  Reads all .md/.txt files                               │
-│       │  Chunks at 900 chars with 150-char overlap              │
-│       │  Computes per-term IDF across all chunks                │
-│       │  Saves to rag/.index/index.json                         │
-│       │  → 60 chunks total                                      │
+│       │  Chunks at ~800–900 chars with ~150-char overlap        │
+│       │  Embeds chunks with `nomic-embed-text` and upserts into │
+│       │  a local ChromaDB collection (collection: rag_corpus)   │
+│       │  → ~60 chunks total                                     │
 │                                                                 │
 │  rag/retrieval/retriever.py (RAGRetriever)                      │
-│       │  Loads index from rag/.index/index.json                 │
+│       │  Loads vectors from local ChromaDB collection           │
 │       │  retrieve(query, k=4):                                  │
-│       │    tokenise(query) → BM25 score each chunk              │
-│       │    sort by score → normalise → filter MIN_SCORE=0.10    │
+│       │    embed(query) → cosine-similarity search in ChromaDB  │
+│       │    (fallback: BM25 token-score if ChromaDB unavailable) │
 │       │    return [{source, content, score, chunk_id}]          │
 │                                                                 │
 │  apps/backend/retriever.py                                      │
@@ -184,11 +184,12 @@ MCP `operator_recommendations(ALM-001)` → Alarm API `POST /recommendations/ope
 **9. Similar Tickets**
 MCP Client → Ticketing MCP → `search_tickets(asset_id=ASSET-001, query="...")` → INC-1001 matched.
 
-**10. BM25 RAG Retrieval**
+**10. ChromaDB RAG Retrieval**
 `RAGRetriever.retrieve("Boiler Feed Pump 101 Pump prepare an incident Low Suction Pressure", k=4)`:
-- Tokenises query
-- BM25 scores all 60 chunks
-- Top 4 returned: `incident_enrichment_overview.md` (1.00), `historical_resolutions.md` (0.91), `troubleshooting_guide.md` (0.74), `alarm_response_playbook.md` (0.68)
+- Embed the query with `nomic-embed-text` (Ollama or nomic client)
+- Cosine-similarity search in ChromaDB collection (`rag_corpus`)
+- Top 4 returned (example): `incident_enrichment_overview.md` (1.00), `historical_resolutions.md` (0.91), `troubleshooting_guide.md` (0.74), `alarm_response_playbook.md` (0.68)
+- If ChromaDB or embedding service is unavailable, a BM25 fallback path scores token matches over the 60 chunks
 
 **11. LLM Synthesis (or Fallback)**
 If `OPENAI_API_KEY` set: sends structured prompt to GPT-4o-mini with all context (asset, alarm, priority, recommendations, RAG chunks, similar tickets). Temperature=0.2 for factual answers.

@@ -1,7 +1,7 @@
 [project]
 name = "incident_enrichment_copilot"
 version = "0.1.0"
-description = "Incident & Ticket Enrichment Copilot — MCP + BM25 RAG + HITL"
+description = "Incident & Ticket Enrichment Copilot — MCP + ChromaDB RAG + HITL"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

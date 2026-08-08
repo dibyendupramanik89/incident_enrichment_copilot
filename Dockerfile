@@ -8,13 +8,9 @@
 # single image (e.g. `docker build -t copilot-backend .`) per the assignment's
 # required repository layout. It builds the backend orchestration service.
 FROM python:3.12-slim
-WORKDIR /app
-
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY apps/backend/ /app/
-COPY rag/ /app/rag/
-
+WORKDIR /workspace
+COPY . /workspace
+RUN pip install --no-cache-dir -r /workspace/requirements.txt
+WORKDIR /workspace/apps/backend
 EXPOSE 8080
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8080"]

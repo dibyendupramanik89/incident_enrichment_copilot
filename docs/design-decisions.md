@@ -14,20 +14,19 @@
 
 ---
 
-## 2. BM25 over Embedding-based RAG
+## 2. ChromaDB + Embeddings (with BM25 fallback)
 
-**Decision:** Use BM25 (pure Python) instead of a vector database + embedding model.
+**Decision:** Use dense semantic retrieval with `nomic-embed-text` embeddings stored in a local ChromaDB collection. Keep a pure-Python BM25 fallback for environments where ChromaDB or the embedding service is unavailable.
 
 **Rationale:**
-- Zero infrastructure: no Qdrant, Pinecone, Weaviate, or Chroma required
-- Zero ML dependencies: no sentence-transformers, no GPU, no model download
-- Deterministic: same query always returns same results (no approximate nearest-neighbour variance)
-- Fully auditable: scores are interpretable (term frequency × IDF)
-- Sufficient for the 60-chunk corpus in this assignment
+- Semantic retrieval improves recall on short, operational documents where lexical variation is common.
+- `nomic-embed-text` via Ollama or the nomic client is lightweight to run locally and works well for domain-specific short texts.
+- ChromaDB offers a simple local vector store that is easy to persist in the repository for demos.
+- A BM25 fallback provides a reliable, zero-dependency path for CI or constrained execution environments.
 
-**Trade-off:** Lexical only — BM25 misses semantic matches (e.g. "pump failure" vs "impeller degradation"). A hybrid approach (BM25 + dense retrieval) would improve recall at larger corpus sizes.
+**Trade-off:** Dense retrieval requires an embedding service (Ollama or remote embedding API) and a vector store. The BM25 fallback preserves the zero-ML path for testing and quick demos.
 
-**Scale threshold:** Would reconsider this decision at corpus sizes > 5,000 chunks or when semantic similarity becomes critical for recall.
+**Scale threshold:** Consider hybrid sparse+dense ranking when corpus sizes or precision requirements increase significantly.
 
 ---
 

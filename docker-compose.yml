@@ -44,8 +44,10 @@ services:
       - MCP_TICKETING_URL=http://ticketing-mcp:9001
       - MCP_TIMEOUT_SECONDS=20
       - RAG_DOCUMENTS_DIR=/workspace/rag/documents
+      - CHROMA_DIR=/workspace/.chromadb
     volumes:
       - ./:/workspace:ro
+      - rag_chroma_data:/workspace/.chromadb
     depends_on:
       - alarm-management-mcp
       - ticketing-mcp
@@ -60,3 +62,6 @@ services:
       - BACKEND_URL=http://backend:8080
     depends_on:
       - backend
+
+volumes:
+  rag_chroma_data:
