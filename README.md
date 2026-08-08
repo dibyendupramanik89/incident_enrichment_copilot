@@ -1,5 +1,7 @@
 # Incident & Ticket Enrichment Copilot
 
+System design architecture: [incident_copilot_system_design.html](docs/incident_copilot_system_design.html)
+
 **Senior Software Engineer – Copilot Integration Assignment**
 
 An AI-powered industrial operations assistant that combines **MCP tool calls**, **ChromaDB RAG retrieval**, and **Human-in-the-Loop confirmation** to help operators investigate alarms and create enriched incident tickets.
