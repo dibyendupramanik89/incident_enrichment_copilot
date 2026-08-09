@@ -1,5 +1,5 @@
 """
-Copilot Orchestrator
+Copilot Orchestrator-
 Handles the full multi-step workflow:
   1. Intent detection
   2. Asset resolution via MCP
